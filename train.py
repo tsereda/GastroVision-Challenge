@@ -6,6 +6,7 @@ from torch.utils.data import DataLoader
 from torch.optim import AdamW
 from torch.optim.lr_scheduler import CosineAnnealingLR, CosineAnnealingWarmRestarts
 from sklearn.metrics import balanced_accuracy_score, f1_score, recall_score, confusion_matrix
+from sklearn.model_selection import train_test_split
 from tqdm import tqdm
 
 from src import (
@@ -21,18 +22,43 @@ from src import (
 
 
 def load_data():
-    """Load your dataset - IMPLEMENT THIS
+    """Load GastroVision dataset from directory structure
     
     Returns:
         train_paths, train_labels, val_paths, val_labels
     """
-    # TODO: Implement your data loading
-    # Example:
-    # train_df = pd.read_csv('train.csv')
-    # train_paths = train_df['image_path'].tolist()
-    # train_labels = train_df['label'].tolist()
-    # ...
-    raise NotImplementedError("Implement your data loading here!")
+    data_root = Path('Gastrovision 4 class')
+    
+    # Class mapping
+    class_mapping = {
+        'Normal mucosa and vascular pattern in the large bowel': 0,
+        'Normal esophagus': 1,
+        'Colon polyps': 2,
+        'Erythema': 3
+    }
+    
+    all_paths = []
+    all_labels = []
+    
+    for class_name, label in class_mapping.items():
+        class_dir = data_root / class_name
+        image_paths = list(class_dir.glob('*.jpg'))
+        all_paths.extend([str(p) for p in image_paths])
+        all_labels.extend([label] * len(image_paths))
+        print(f"{class_name}: {len(image_paths)} images (label={label})")
+    
+    # 80/20 train/val split with stratification
+    train_paths, val_paths, train_labels, val_labels = train_test_split(
+        all_paths, all_labels, 
+        test_size=0.2, 
+        stratify=all_labels, 
+        random_state=42
+    )
+    
+    print(f"\nTrain: {len(train_paths)} images")
+    print(f"Val: {len(val_paths)} images")
+    
+    return train_paths, train_labels, val_paths, val_labels
 
 
 def train_epoch(model, loader, criterion, optimizer, device, config, epoch):

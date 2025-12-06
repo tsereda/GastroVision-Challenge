@@ -45,13 +45,13 @@ spec:
           echo "--- 2. Cloning training repository ---"
           cd /workspace
           git clone https://github.com/tsereda/GastroVision-Challenge.git
-          cd GastroVision-Challenge/gastrovision
+          cd GastroVision-Challenge
 
           echo "--- 3. Preparing GastroVision dataset ---"
-          # TODO: Add your dataset download/unzip commands here
-          # Example:
-          # gdown <your-dataset-id>
-          # unzip gastrovision-dataset.zip -d /data/gastrovision
+          curl -L -o gastrovision-4.zip https://www.kaggle.com/api/v1/datasets/download/debeshjha1/gastrovision-4
+          curl -L -o gastrovision-challenge-dataset.zip https://www.kaggle.com/api/v1/datasets/download/debeshjha1/gastrovision-challenge-dataset
+          unzip gastrovision-4.zip
+          unzip gastrovision-challenge-dataset.zip
           
           echo "--- 4. Verifying environment ---"
           python -c "import torch; import timm; import albumentations; import wandb; \
