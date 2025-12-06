@@ -1,0 +1,12 @@
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: gastrovision
+  namespace: gai-lina-group
+spec:
+  accessModes:
+    - ReadWriteMany
+  storageClassName: rook-cephfs-central
+  resources:
+    requests:
+      storage: 100Gi

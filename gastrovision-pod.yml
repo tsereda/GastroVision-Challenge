@@ -3,8 +3,6 @@ kind: Pod
 metadata:
   name: gastrovision-training-1
 spec:
-  nodeSelector:
-    nautilus.io/linstor: "true"
   affinity:
     nodeAffinity:
       requiredDuringSchedulingIgnoredDuringExecution:
@@ -85,11 +83,11 @@ spec:
           mountPath: /dev/shm
       resources:
         requests:
-          memory: 32Gi
-          cpu: "8"
+          memory: 24Gi
+          cpu: "12"
           nvidia.com/gpu: "1"
         limits:
-          memory: 64Gi
+          memory: 32Gi
           cpu: "16"
           nvidia.com/gpu: "1"
   
@@ -99,7 +97,7 @@ spec:
         sizeLimit: 100Gi
     - name: data
       persistentVolumeClaim:
-        claimName: gastrovision-data-1
+        claimName: gastrovision
     - name: shm
       emptyDir:
         medium: Memory
