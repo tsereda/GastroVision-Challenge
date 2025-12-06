@@ -1,13 +1,13 @@
+import time
+import numpy as np
 import torch
 import wandb
-import numpy as np
 from pathlib import Path
 from torch.utils.data import DataLoader
 from torch.optim import AdamW
 from torch.optim.lr_scheduler import CosineAnnealingLR, CosineAnnealingWarmRestarts
 from sklearn.metrics import balanced_accuracy_score, f1_score, recall_score, confusion_matrix
 from sklearn.model_selection import train_test_split
-from tqdm import tqdm
 
 from src import (
     GastroVisionDataset,
@@ -27,7 +27,7 @@ def load_data():
     Returns:
         train_paths, train_labels, val_paths, val_labels
     """
-    data_root = Path('Gastrovision 4 class')
+    data_root = Path('Gastrovision Challenge dataset/Training data')
     
     # Class mapping
     class_mapping = {
@@ -68,8 +68,7 @@ def train_epoch(model, loader, criterion, optimizer, device, config, epoch):
     all_preds = []
     all_targets = []
     
-    pbar = tqdm(loader, desc=f'Epoch {epoch} [Train]')
-    for images, targets in pbar:
+    for images, targets in loader:
         images, targets = images.to(device), targets.to(device)
         
         # Apply mixup or cutmix
@@ -101,8 +100,6 @@ def train_epoch(model, loader, criterion, optimizer, device, config, epoch):
         preds = outputs.argmax(dim=1)
         all_preds.extend(preds.cpu().numpy())
         all_targets.extend(targets.cpu().numpy())
-        
-        pbar.set_postfix({'loss': f'{loss.item():.4f}'})
     
     epoch_loss = running_loss / len(loader)
     epoch_acc = balanced_accuracy_score(all_targets, all_preds)
@@ -118,7 +115,7 @@ def validate(model, loader, criterion, device):
     all_targets = []
     
     with torch.no_grad():
-        for images, targets in tqdm(loader, desc='Validation'):
+        for images, targets in loader:
             images, targets = images.to(device), targets.to(device)
             outputs = model(images)
             loss = criterion(outputs, targets)
@@ -222,6 +219,8 @@ def train(config=None):
         best_balanced_acc = 0.0
         
         for epoch in range(1, total_epochs + 1):
+            epoch_start = time.time()
+            
             train_loss, train_acc = train_epoch(
                 model, train_loader, criterion, optimizer, device, config, epoch
             )
@@ -233,24 +232,38 @@ def train(config=None):
             else:
                 scheduler.step()
             
+            current_lr = optimizer.param_groups[0]['lr']
+            val_acc = val_metrics['val/balanced_accuracy']
+            val_loss = val_metrics['val/loss']
+            epoch_time = time.time() - epoch_start
+            
+            # Clean epoch summary
+            is_best = val_acc > best_balanced_acc
+            best_marker = ' ⭐ Best!' if is_best else ''
+            print(f"Epoch {epoch}/{total_epochs} [{epoch_time:.1f}s] | "
+                  f"Train: Loss={train_loss:.3f} Acc={train_acc:.3f} | "
+                  f"Val: Loss={val_loss:.3f} Acc={val_acc:.3f} F1={val_metrics['val/f1_macro']:.3f} | "
+                  f"LR={current_lr:.2e}{best_marker}")
+            
             # Log to W&B
             wandb.log({
                 'epoch': epoch,
                 'train/loss': train_loss,
                 'train/balanced_accuracy': train_acc,
-                'learning_rate': optimizer.param_groups[0]['lr'],
+                'learning_rate': current_lr,
                 **val_metrics
             })
             
             # Save best model
-            if val_metrics['val/balanced_accuracy'] > best_balanced_acc:
-                best_balanced_acc = val_metrics['val/balanced_accuracy']
+            if is_best:
+                best_balanced_acc = val_acc
                 torch.save({
                     'epoch': epoch,
                     'model_state_dict': model.state_dict(),
                     'balanced_acc': best_balanced_acc,
                     'config': dict(config)
                 }, f'best_model_{run.id}.pth')
+                print(f"  → Saved checkpoint: best_model_{run.id}.pth (Acc: {best_balanced_acc:.4f})")
                 print(f"✓ New best: {best_balanced_acc:.4f}")
 
 
