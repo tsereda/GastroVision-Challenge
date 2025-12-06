@@ -5,7 +5,7 @@ metric:
   goal: maximize
 early_terminate:
   type: hyperband
-  min_iter: 15
+  min_iter: 8
   eta: 3
   s: 2
 
@@ -30,7 +30,7 @@ parameters:
     values: [32, 48]
   
   epochs:
-    value: 100
+    value: 20
   
   warmup_epochs:
     values: [5, 10, 15]
@@ -39,7 +39,7 @@ parameters:
     values: ['cosine', 'cosine_restarts']
   
   loss_function:
-    values: ['focal', 'weighted_ce', 'focal_weighted']
+    value: 'focal_weighted'
   
   focal_gamma:
     distribution: uniform
@@ -53,18 +53,18 @@ parameters:
   
   mixup_alpha:
     distribution: uniform
-    min: 0.1
-    max: 0.4
+    min: 0.05
+    max: 0.2
   
   cutmix_alpha:
     distribution: uniform
-    min: 0.1
+    min: 0.5
     max: 1.0
   
   mixup_prob:
     distribution: uniform
-    min: 0.3
-    max: 0.7
+    min: 0.2
+    max: 0.5
   
   color_jitter_brightness:
     distribution: uniform

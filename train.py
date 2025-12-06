@@ -237,12 +237,26 @@ def train(config=None):
             val_loss = val_metrics['val/loss']
             epoch_time = time.time() - epoch_start
             
+            # Per-class recall display
+            class_names = ['Mucosa', 'Esoph', 'Polyps', 'Eryth']
+            recall_per_class = [
+                val_metrics['val/recall_normal_mucosa'],
+                val_metrics['val/recall_normal_esophagus'],
+                val_metrics['val/recall_polyps'],
+                val_metrics['val/recall_erythema']
+            ]
+            worst_idx = np.argmin(recall_per_class)
+            worst_class = class_names[worst_idx]
+            worst_recall = recall_per_class[worst_idx]
+            recall_str = '/'.join([f'{r:.2f}' for r in recall_per_class])
+            
             # Clean epoch summary
             is_best = val_acc > best_balanced_acc
             best_marker = ' ⭐ Best!' if is_best else ''
             print(f"Epoch {epoch}/{total_epochs} [{epoch_time:.1f}s] | "
                   f"Train: Loss={train_loss:.3f} Acc={train_acc:.3f} | "
                   f"Val: Loss={val_loss:.3f} Acc={val_acc:.3f} F1={val_metrics['val/f1_macro']:.3f} | "
+                  f"Recall:[{recall_str}] Worst:{worst_class}={worst_recall:.2f} | "
                   f"LR={current_lr:.2e}{best_marker}")
             
             # Log to W&B
