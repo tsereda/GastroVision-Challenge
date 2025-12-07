@@ -1,0 +1,106 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: gastrovision-1
+spec:
+  template:
+    spec:
+      tolerations:
+        - key: nvidia.com/gpu
+          operator: Exists
+      containers:
+        - name: gastrovision-swin-training
+          image: nvcr.io/nvidia/pytorch:24.09-py3
+          env:
+            - name: WANDB_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: wandb-credentials
+                  key: api-key
+            - name: WANDB_PROJECT
+              value: "gastrovision-challenge"
+            - name: WANDB_ENTITY
+              value: "timgsereda"
+          command: ["/bin/bash", "-c"]
+          args:
+            - |
+              echo "--- 1. Installing dependencies ---"
+              apt-get update && apt-get install -y git wget unzip
+              pip install torch>=2.0.0 torchvision>=0.15.0 --index-url https://download.pytorch.org/whl/cu118
+              pip install timm>=0.9.0 albumentations>=1.3.0 wandb>=0.15.0 \
+                          Pillow>=9.0.0 numpy>=1.24.0 scikit-learn>=1.3.0 \
+                          pandas>=2.0.0 tqdm>=4.65.0
+              pip install "numpy<2.0" --force-reinstall
+              pip uninstall opencv-python-headless -y
+              pip install opencv-python-headless==4.10.0.84
+              pip uninstall albumentations opencv-python-headless -y
+              pip install albumentations==1.4.0 opencv-python-headless==4.9.0.80
+              pip install --force-reinstall "numpy<2.0" opencv-python-headless==4.9.0.80 albumentations==1.4.0
+              pip uninstall opencv-python opencv-python-headless -y
+              pip install opencv-python-headless==4.9.0.80
+              pip uninstall -y opencv-python-headless opencv-python
+              rm -rf /usr/local/lib/python3.10/dist-packages/cv2*
+              pip install --no-cache-dir opencv-python-headless==4.9.0.80
+              python -c "import cv2; print(cv2.__version__)"
+
+              echo "--- 2. Cloning training repository ---"
+              cd /workspace
+              git clone https://github.com/tsereda/GastroVision-Challenge.git
+              cd GastroVision-Challenge
+
+              echo "--- 3. Preparing GastroVision dataset ---"
+              curl -L -o gastrovision-challenge-dataset.zip https://www.kaggle.com/api/v1/datasets/download/debeshjha1/gastrovision-challenge-dataset
+              unzip gastrovision-challenge-dataset.zip
+              
+              echo "--- 4. Verifying environment ---"
+              python -c "import torch; import timm; import albumentations; import wandb; \
+                        print(f'PyTorch: {torch.__version__}'); \
+                        print(f'TIMM: {timm.__version__}'); \
+                        print(f'CUDA available: {torch.cuda.is_available()}'); \
+                        print(f'GPU: {torch.cuda.get_device_name(0) if torch.cuda.is_available() else \"None\"}')"
+              
+              echo "--- 5. Running W&B hyperparameter sweep ---"
+              # Initialize sweep (run this once to get sweep ID)
+              # wandb sweep config/sweep.yaml
+              
+              # Run sweep agent (replace with your sweep ID)
+              # wandb agent timgsereda/gastrovision-challenge/<sweep-id> --count 50
+              
+              # Or run single training
+              # Or run single training
+              # python train.py
+              
+              echo "--- IMPORTANT: Update this pod with your sweep ID ---"
+              echo "--- Keeping pod alive for debugging ---"
+              tail -f /dev/null
+          
+          volumeMounts:
+            - name: workspace
+              mountPath: /workspace
+            - name: data
+              mountPath: /data
+            - name: shm
+              mountPath: /dev/shm
+          resources:
+            requests:
+              memory: 25Gi
+              cpu: "15"
+              nvidia.com/a100: "1"
+            limits:
+              memory: 30Gi
+              cpu: "18"
+              nvidia.com/a100: "1"
+      
+      volumes:
+        - name: workspace
+          emptyDir:
+            sizeLimit: 100Gi
+        - name: data
+          persistentVolumeClaim:
+            claimName: gastrovision
+        - name: shm
+          emptyDir:
+            medium: Memory
+            sizeLimit: 16Gi
+      
+      restartPolicy: Never

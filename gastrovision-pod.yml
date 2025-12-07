@@ -78,6 +78,7 @@ spec:
           # wandb agent timgsereda/gastrovision-challenge/<sweep-id> --count 50
           
           # Or run single training
+          # Or run single training
           # python train.py
           
           echo "--- IMPORTANT: Update this pod with your sweep ID ---"
