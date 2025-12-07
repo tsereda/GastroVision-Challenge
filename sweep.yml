@@ -17,9 +17,7 @@ parameters:
     values: [224, 384]
   
   learning_rate:
-    distribution: log_uniform_values
-    min: 1e-5
-    max: 5e-4
+    values: [0.0001, 0.00015, 0.0002, 0.00025, 0.0003, 0.00035, 0.0004, 0.00045, 0.0005]
   
   weight_decay:
     distribution: log_uniform_values
