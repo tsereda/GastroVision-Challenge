@@ -3,6 +3,10 @@ import numpy as np
 import torch
 import wandb
 from pathlib import Path
+import numpy as np
+import torch
+import wandb
+import time
 from torch.utils.data import DataLoader
 from torch.optim import AdamW
 from torch.optim.lr_scheduler import CosineAnnealingLR, CosineAnnealingWarmRestarts
@@ -155,11 +159,22 @@ def train(config=None):
         # Load data
         train_paths, train_labels, val_paths, val_labels = load_data()
         
-        # Calculate class weights
+        # Calculate class weights with optional boost
         unique, counts = np.unique(train_labels, return_counts=True)
         class_weights = 1.0 / counts
         class_weights = class_weights / class_weights.sum() * len(unique)
-        print(f"Class weights: {class_weights}")
+        
+        # NEW: Apply boost to minority classes (Mucosa=0, Polyps=2)
+        boost = config.get('class_weight_boost', 1.0)
+        class_weights[0] *= boost  # Normal mucosa
+        class_weights[2] *= boost  # Polyps
+        class_weights = class_weights / class_weights.sum() * len(unique)  # Re-normalize
+        
+        print(f"\nClass weights (with {boost}x boost):")
+        print(f"  Class 0 (Mucosa):    {class_weights[0]:.3f}")
+        print(f"  Class 1 (Esophagus): {class_weights[1]:.3f}")
+        print(f"  Class 2 (Polyps):    {class_weights[2]:.3f}")
+        print(f"  Class 3 (Erythema):  {class_weights[3]:.3f}")
         
         # Create datasets
         train_dataset = GastroVisionDataset(
@@ -215,8 +230,10 @@ def train(config=None):
             optimizer, start_factor=0.01, total_iters=warmup_epochs
         )
         
-        # Training loop
+        # Training loop with early stopping
         best_balanced_acc = 0.0
+        patience = 8
+        patience_counter = 0
         
         for epoch in range(1, total_epochs + 1):
             epoch_start = time.time()
@@ -271,6 +288,7 @@ def train(config=None):
             # Save best model
             if is_best:
                 best_balanced_acc = val_acc
+                patience_counter = 0  # Reset patience counter
                 torch.save({
                     'epoch': epoch,
                     'model_state_dict': model.state_dict(),
@@ -279,6 +297,17 @@ def train(config=None):
                 }, f'best_model_{run.id}.pth')
                 print(f"  → Saved checkpoint: best_model_{run.id}.pth (Acc: {best_balanced_acc:.4f})")
                 print(f"✓ New best: {best_balanced_acc:.4f}")
+            else:
+                patience_counter += 1
+                if patience_counter >= patience:
+                    print(f"\n⚠️  Early stopping at epoch {epoch} (no improvement for {patience} epochs)")
+                    print(f"   Best validation accuracy: {best_balanced_acc:.4f}")
+                    break
+        
+        print(f"\n{'='*60}")
+        print(f"Training completed!")
+        print(f"Best validation balanced accuracy: {best_balanced_acc:.4f}")
+        print(f"{'='*60}")
 
 
 if __name__ == '__main__':

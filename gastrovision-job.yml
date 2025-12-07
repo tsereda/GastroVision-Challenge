@@ -63,16 +63,7 @@ spec:
               # Initialize sweep (run this once to get sweep ID)
               # wandb sweep config/sweep.yaml
               
-              # Run sweep agent (replace with your sweep ID)
-              # wandb agent timgsereda/gastrovision-challenge/<sweep-id> --count 50
-              
-              # Or run single training
-              # Or run single training
-              # python train.py
-              
-              echo "--- IMPORTANT: Update this pod with your sweep ID ---"
-              echo "--- Keeping pod alive for debugging ---"
-              tail -f /dev/null
+              wandb agent timgsereda/GastroVision-Challenge/gg6fdhv8
           
           volumeMounts:
             - name: workspace
