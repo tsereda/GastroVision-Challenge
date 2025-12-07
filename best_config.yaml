@@ -1,0 +1,35 @@
+# Best configuration from sweep
+# Run: dulcet-sweep-59
+# Val Balanced Accuracy: 0.9193
+# Recalls: Mucosa=0.769, Esoph=1.000, Polyps=0.909, Eryth=1.000
+
+model_name: swin_base_patch4_window7_224
+image_size: 224
+
+# Optimizer
+learning_rate: 0.00015
+weight_decay: 0.00030
+warmup_epochs: 12
+scheduler: cosine
+
+# Loss
+loss_function: focal_weighted
+focal_gamma: 1.40
+label_smoothing: 0.120
+class_weight_boost: 2.0
+
+# Regularization
+dropout_rate: 0.30
+stochastic_depth: 0.20
+
+# Augmentation
+mixup_alpha: 0.10
+cutmix_alpha: 0.8
+mixup_prob: 0.40
+color_jitter_brightness: 0.20
+color_jitter_contrast: 0.20
+color_jitter_saturation: 0.20
+
+# Training
+batch_size: 32
+epochs: 60  # Increase from sweep value for final training
