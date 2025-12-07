@@ -16,9 +16,10 @@ parameters:
   image_size:
     value: 224
   
-  # REFINED: Focus on lower LR region (winner was 0.00015)
+  # CRITICAL FIX: Best run at 0.00015 (upper bound) - extend to explore further
+  # Negative correlation overall (r=-0.24) but best run at upper limit
   learning_rate:
-    values: [0.00008, 0.0001, 0.00012, 0.00015]
+    values: [0.00008, 0.0001, 0.00012, 0.00015, 0.0002]
   
   # REFINED: Stronger bias toward higher weight decay
   weight_decay:
@@ -46,13 +47,14 @@ parameters:
   focal_gamma:
     values: [0.8, 1.0, 1.2, 1.4, 1.6]
   
-  # REFINED: Higher values for better smoothing
+  # OPTIONAL: Add 0.08 to explore slightly lower values
+  # Best run: 0.12, Top 20% mean: 0.107
   label_smoothing:
-    values: [0.10, 0.12, 0.15]
+    values: [0.08, 0.10, 0.12, 0.15]
   
-  # NEW APPROACH: Test both low and high mixup
+  # REFINED: Focus on lower values (best run: 0.1, slight negative correlation)
   mixup_alpha:
-    values: [0.05, 0.1, 0.2, 0.3]
+    values: [0.05, 0.1, 0.15, 0.2]
   
   # REFINED: Focus on higher cutmix (positive correlation)
   cutmix_alpha:
@@ -75,9 +77,10 @@ parameters:
   dropout_rate:
     values: [0.25, 0.3, 0.35]
   
-  # REFINED: Focus on higher stochastic depth
+  # CRITICAL FIX: Add 0.15 - top 20% mean is 0.187, outside your [0.2-0.25] range
+  # Best run: 0.2
   stochastic_depth:
-    values: [0.2, 0.25]
+    values: [0.15, 0.2, 0.25]
   
   # CRITICAL: Aggressive boost for Erythema class
   # Test even higher values to improve worst-class recall
