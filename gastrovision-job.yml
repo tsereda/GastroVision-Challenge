@@ -1,7 +1,7 @@
 apiVersion: batch/v1
 kind: Job
 metadata:
-  name: gastrovision-training-6
+  name: gastrovision-training-12
 spec:
   template:
     spec:
@@ -63,7 +63,7 @@ spec:
               # Initialize sweep (run this once to get sweep ID)
               # wandb sweep config/sweep.yaml
               
-              wandb agent timgsereda/GastroVision-Challenge/mtokg3jl
+              wandb agent timgsereda/GastroVision-Challenge/phc1j3at
           
           volumeMounts:
             - name: workspace
