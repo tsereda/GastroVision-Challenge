@@ -1,7 +1,7 @@
 apiVersion: batch/v1
 kind: Job
 metadata:
-  name: gastrovision-1
+  name: gastrovision-12
 spec:
   template:
     spec:
@@ -63,7 +63,7 @@ spec:
               # Initialize sweep (run this once to get sweep ID)
               # wandb sweep config/sweep.yaml
               
-              wandb agent timgsereda/GastroVision-Challenge/u4ruq822
+              wandb agent timgsereda/GastroVision-Challenge/y3jpjgsm
           
           volumeMounts:
             - name: workspace
@@ -74,11 +74,11 @@ spec:
               mountPath: /dev/shm
           resources:
             requests:
-              memory: 25Gi
+              memory: 15Gi
               cpu: "15"
               nvidia.com/a100: "1"
             limits:
-              memory: 30Gi
+              memory: 18Gi
               cpu: "18"
               nvidia.com/a100: "1"
       

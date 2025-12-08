@@ -1,7 +1,7 @@
 program: train.py
 method: bayes
 metric:
-  name: val/balanced_accuracy
+  name: val/worst_
   goal: maximize
 early_terminate:
   type: hyperband
@@ -16,14 +16,16 @@ parameters:
   image_size:
     value: 224
   
-  # CRITICAL FIX: Best run at 0.00015 (upper bound) - extend to explore further
-  # Negative correlation overall (r=-0.24) but best run at upper limit
+  # OPTIMIZED: Top runs cluster at lower values (8e-5 to 1e-4)
+  # Extended lower bound to explore even smaller rates
   learning_rate:
-    values: [0.00008, 0.0001, 0.00012, 0.00015, 0.0002]
+    distribution: log_uniform_values
+    min: 0.00004
+    max: 0.00012
   
-  # REFINED: Stronger bias toward higher weight decay
+  # OPTIMIZED: Top runs favor higher values (0.0003-0.0004)
   weight_decay:
-    values: [0.0002, 0.0003, 0.0004]
+    values: [0.0003, 0.0004]
   
   batch_size:
     value: 32
@@ -32,9 +34,9 @@ parameters:
   epochs:
     value: 50
   
-  # REFINED: Focus on sweet spot
+  # OPTIMIZED: Focus on top-performing value
   warmup_epochs:
-    values: [10, 12, 14]
+    value: 12
   
   scheduler:
     value: 'cosine'
@@ -42,28 +44,30 @@ parameters:
   loss_function:
     value: 'focal_weighted'
   
-  # CRITICAL: Sweep lower gamma values (negative correlation!)
-  # Best run used 1.4, but correlation suggests lower is better
+  # OPTIMIZED: Strong negative correlation - focus on low values
+  # Top runs heavily cluster around 1.0
   focal_gamma:
-    values: [0.8, 1.0, 1.2, 1.4, 1.6]
-  
-  # OPTIONAL: Add 0.08 to explore slightly lower values
-  # Best run: 0.12, Top 20% mean: 0.107
-  label_smoothing:
-    values: [0.08, 0.10, 0.12, 0.15]
-  
-  # REFINED: Focus on lower values (best run: 0.1, slight negative correlation)
-  mixup_alpha:
-    values: [0.05, 0.1, 0.15, 0.2]
-  
-  # REFINED: Focus on higher cutmix (positive correlation)
-  cutmix_alpha:
     values: [0.8, 1.0, 1.2]
   
-  mixup_prob:
-    values: [0.3, 0.4, 0.5]
+  # OPTIMIZED: Top runs favor 0.10-0.12
+  label_smoothing:
+    values: [0.10, 0.12]
   
-  # Standard color augmentation
+  # OPTIMIZED: Top runs show tight cluster around 0.05-0.15
+  mixup_alpha:
+    min: 0.05
+    max: 0.20
+  
+  # OPTIMIZED: Positive correlation, focus on higher values
+  cutmix_alpha:
+    min: 0.8
+    max: 1.2
+  
+  # OPTIMIZED: Top runs split between 0.4 and 0.5
+  mixup_prob:
+    values: [0.4, 0.5]
+  
+  # Standard color augmentation - keep fixed
   color_jitter_brightness:
     value: 0.2
   
@@ -73,16 +77,16 @@ parameters:
   color_jitter_saturation:
     value: 0.2
   
-  # REFINED: Higher dropout (positive correlation)
+  # OPTIMIZED: Strong positive correlation - focus on high dropout
   dropout_rate:
-    values: [0.25, 0.3, 0.35]
+    values: [0.30, 0.35]
   
-  # CRITICAL FIX: Add 0.15 - top 20% mean is 0.187, outside your [0.2-0.25] range
-  # Best run: 0.2
+  # OPTIMIZED: Top runs almost exclusively use 0.2
   stochastic_depth:
-    values: [0.15, 0.2, 0.25]
+    value: 0.20
   
-  # CRITICAL: Aggressive boost for Erythema class
-  # Test even higher values to improve worst-class recall
+  # CRITICAL: Most important parameter - top runs cluster at 3.0-4.0
+  # Extended upper range to explore even higher boosts
   class_weight_boost:
-    values: [2.0, 2.5, 3.0, 3.5, 4.0]
+    min: 3.5
+    max: 5.5
