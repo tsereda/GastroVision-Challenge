@@ -1,7 +1,7 @@
 apiVersion: batch/v1
 kind: Job
 metadata:
-  name: gastrovision-training-18
+  name: gastrovision-training-6
 spec:
   template:
     spec:
