@@ -11,10 +11,10 @@ early_terminate:
 
 parameters:
   model_name:
-    value: 'swin_base_patch4_window7_224'
+    value: 'swin_base_patch4_window12_384'
   
   image_size:
-    value: 224
+    value: 384
   
   # Learning rate - narrow range around proven value
   learning_rate:
