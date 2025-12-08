@@ -25,5 +25,5 @@ def find_smallest_file(start_path):
         print("No files found.")
 
 # The path from your screenshot
-dir_path = "GastroVision-Challenge/Gastrovision Challenge dataset/Training data/Erythema"
+dir_path = "Gastrovision Challenge dataset/Training data/Erythema"
 find_smallest_file(dir_path)
