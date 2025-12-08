@@ -1,0 +1,91 @@
+program: train.py
+method: bayes
+metric:
+  name: val/worst_class_recall
+  goal: maximize
+early_terminate:
+  type: hyperband
+  min_iter: 15
+  eta: 3
+  s: 2
+
+parameters:
+  model_name:
+    value: 'swin_base_patch4_window7_224'
+  
+  image_size:
+    value: 224
+  
+  # Learning rate - narrow range around proven value
+  learning_rate:
+    min: 0.00009
+    max: 0.00011
+  
+  weight_decay:
+    values: [0.00030, 0.00035, 0.00040]
+  
+  batch_size:
+    value: 32
+  
+  epochs:
+    value: 50
+  
+  warmup_epochs:
+    value: 12
+  
+  scheduler:
+    value: 'cosine'
+  
+  # ONLY dynamic worst-class loss
+  loss_function:
+    value: 'dynamic_worst_class'
+  
+  # Focal gamma - moderate range
+  focal_gamma:
+    min: 1.4
+    max: 1.8
+  
+  label_smoothing:
+    value: 0.12
+  
+  # CLASS WEIGHT BOOST - MODERATE (intersection zone)
+  class_weight_boost:
+    min: 1.8
+    max: 2.5
+  
+  # LAMBDA_WORST - Key parameter for dynamic loss
+  lambda_worst:
+    min: 0.25
+    max: 0.45
+  
+  # Augmentation - proven values
+  mixup_alpha:
+    values: [0.08, 0.10, 0.12]
+  
+  cutmix_alpha:
+    min: 0.8
+    max: 1.0
+  
+  mixup_prob:
+    value: 0.4
+  
+  color_jitter_brightness:
+    value: 0.2
+  
+  color_jitter_contrast:
+    value: 0.2
+  
+  color_jitter_saturation:
+    value: 0.2
+  
+  dropout_rate:
+    values: [0.28, 0.30, 0.32]
+  
+  stochastic_depth:
+    value: 0.20
+
+# OPTIMIZATION STRATEGY:
+# - Metric: val/worst_class_recall (not average accuracy!)
+# - Focus: Find optimal lambda_worst and class_weight_boost balance
+# - Goal: Achieve both Erythema & Mucosa recall > 0.70
+# - Expected runs: ~40-60 for convergence

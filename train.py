@@ -220,6 +220,7 @@ def train(config=None):
             class_weights=class_weights,
             focal_gamma=config.get('focal_gamma', 2.0),
             label_smoothing=config.get('label_smoothing', 0.1),
+            lambda_worst=config.get('lambda_worst', 0.3),  # For dynamic_worst_class loss
             device=device
         )
         
@@ -288,13 +289,25 @@ def train(config=None):
                   f"LR={current_lr:.2e}{best_marker}")
             
             # Log to W&B
-            wandb.log({
+            log_dict = {
                 'epoch': epoch,
                 'train/loss': train_loss,
                 'train/balanced_accuracy': train_acc,
                 'learning_rate': current_lr,
                 **val_metrics
-            })
+            }
+            
+            # If using dynamic loss, log class performance
+            if hasattr(criterion, 'get_class_performance'):
+                class_perf = criterion.get_class_performance()
+                log_dict.update({
+                    'dynamic/class_0_ema': class_perf[0],
+                    'dynamic/class_1_ema': class_perf[1],
+                    'dynamic/class_2_ema': class_perf[2],
+                    'dynamic/class_3_ema': class_perf[3],
+                })
+            
+            wandb.log(log_dict)
             
             # Save best model
             if is_best:
