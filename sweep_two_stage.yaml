@@ -1,0 +1,105 @@
+program: train_two_stage.py
+method: bayes
+metric:
+  name: final/worst_class_recall
+  goal: maximize
+early_terminate:
+  type: hyperband
+  min_iter: 10
+  eta: 3
+  s: 2
+
+parameters:
+  model_name:
+    value: 'swin_base_patch4_window12_384'
+  
+  image_size:
+    value: 384
+  
+  # Learning rate
+  learning_rate:
+    min: 0.00008
+    max: 0.00012
+  
+  weight_decay:
+    min: 0.00025
+    max: 0.00035
+  
+  batch_size:
+    value: 32
+  
+  # Two-stage specific parameters
+  stage1_epochs:
+    values: [25, 30, 35]
+  
+  stage2_epochs:
+    values: [15, 20, 25]
+  
+  # Loss function - explore hierarchical losses
+  loss_function:
+    values: ['hierarchical', 'hierarchical_focal', 'asymmetric', 'poly']
+  
+  # Hierarchical loss weight
+  hierarchical_alpha:
+    min: 0.2
+    max: 0.4
+  
+  # Focal gamma
+  focal_gamma:
+    min: 1.2
+    max: 1.6
+  
+  label_smoothing:
+    value: 0.12
+  
+  # Class weight boost
+  class_weight_boost:
+    min: 2.0
+    max: 3.0
+  
+  # Lambda for worst class (if using dynamic loss)
+  lambda_worst:
+    min: 0.25
+    max: 0.40
+  
+  # Poly epsilon
+  poly_epsilon:
+    min: 1.5
+    max: 2.5
+  
+  # Augmentation
+  mixup_alpha:
+    values: [0.08, 0.10, 0.12]
+  
+  cutmix_alpha:
+    min: 0.8
+    max: 1.0
+  
+  mixup_prob:
+    value: 0.4
+  
+  color_jitter_brightness:
+    value: 0.2
+  
+  color_jitter_contrast:
+    value: 0.2
+  
+  color_jitter_saturation:
+    value: 0.2
+  
+  dropout_rate:
+    min: 0.30
+    max: 0.40
+  
+  stochastic_depth:
+    value: 0.20
+  
+  # Hard classes to focus on in stage 2
+  hard_classes:
+    value: [3]  # Erythema
+
+# Two-Stage Training Strategy:
+# - Stage 1: Learn general endoscopic features with standard augmentations
+# - Stage 2: Fine-tune on hard classes (Erythema) with specialized augmentations
+# - Hierarchical losses help learn Normal vs Abnormal distinction first
+# - Expected to break through Erythema recall bottleneck while maintaining overall accuracy

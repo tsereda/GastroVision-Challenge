@@ -227,18 +227,143 @@ class DynamicWorstClassLoss(nn.Module):
         return self.class_recall_ema.cpu().numpy()
 
 
+class HierarchicalLoss(nn.Module):
+    """Hierarchical loss for multi-level classification
+    
+    GastroVision has a natural hierarchy:
+    Level 1: Normal (0, 1) vs Abnormal (2, 3)
+    Level 2: Within each group, specific classification
+    
+    This loss encourages the model to learn both coarse and fine distinctions.
+    
+    Hierarchy:
+    - Normal: Normal Mucosa (0), Normal Esophagus (1)
+    - Abnormal: Colon Polyps (2), Erythema (3)
+    
+    Loss = alpha * L1_loss + (1 - alpha) * L2_loss
+    
+    Args:
+        alpha: Weight for coarse (L1) vs fine (L2) loss (default: 0.3)
+        class_weights: Class weights for fine-grained loss
+        gamma: Focal loss gamma
+    """
+    def __init__(self, alpha=0.3, class_weights=None, gamma=2.0):
+        super().__init__()
+        self.alpha = alpha
+        self.gamma = gamma
+        
+        # Level 1: Normal (0) vs Abnormal (1)
+        self.coarse_criterion = nn.CrossEntropyLoss()
+        
+        # Level 2: Fine-grained within each group
+        if class_weights is not None:
+            self.fine_criterion = FocalWeightedLoss(class_weights, gamma)
+        else:
+            self.fine_criterion = FocalLoss(gamma=gamma)
+    
+    def forward(self, inputs, targets):
+        """
+        Args:
+            inputs: Model logits (B, 4)
+            targets: Fine-grained labels 0-3 (B,)
+        """
+        batch_size = inputs.size(0)
+        
+        # ===== LEVEL 1: Coarse Classification (Normal vs Abnormal) =====
+        # Create coarse labels: 0,1 -> 0 (Normal), 2,3 -> 1 (Abnormal)
+        coarse_targets = (targets >= 2).long()
+        
+        # Coarse logits: sum probabilities for each group
+        fine_probs = F.softmax(inputs, dim=1)
+        
+        # Normal group: class 0 + class 1
+        normal_prob = fine_probs[:, 0] + fine_probs[:, 1]
+        # Abnormal group: class 2 + class 3
+        abnormal_prob = fine_probs[:, 2] + fine_probs[:, 3]
+        
+        coarse_logits = torch.stack([normal_prob, abnormal_prob], dim=1)
+        coarse_logits = torch.log(coarse_logits + 1e-8)  # Convert to log-probs
+        
+        coarse_loss = self.coarse_criterion(coarse_logits, coarse_targets)
+        
+        # ===== LEVEL 2: Fine-grained Classification =====
+        fine_loss = self.fine_criterion(inputs, targets)
+        
+        # ===== COMBINED LOSS =====
+        total_loss = self.alpha * coarse_loss + (1 - self.alpha) * fine_loss
+        
+        return total_loss
+
+
+class HierarchicalFocalLoss(nn.Module):
+    """Enhanced hierarchical loss with focal weighting at both levels
+    
+    Combines hierarchical structure with focal loss benefits:
+    - Coarse level: Focus on hard Normal vs Abnormal distinctions
+    - Fine level: Focus on hard within-group distinctions (e.g., Erythema)
+    
+    Args:
+        alpha: Weight for coarse vs fine loss (default: 0.3)
+        gamma_coarse: Focal gamma for coarse classification (default: 2.0)
+        gamma_fine: Focal gamma for fine classification (default: 2.0)
+        class_weights: Class weights for fine-grained loss
+    """
+    def __init__(self, alpha=0.3, gamma_coarse=2.0, gamma_fine=2.0, class_weights=None):
+        super().__init__()
+        self.alpha = alpha
+        self.gamma_coarse = gamma_coarse
+        self.gamma_fine = gamma_fine
+        
+        # Coarse-level focal loss
+        self.coarse_criterion = FocalLoss(gamma=gamma_coarse)
+        
+        # Fine-level focal loss
+        if class_weights is not None:
+            self.fine_criterion = FocalWeightedLoss(class_weights, gamma=gamma_fine)
+        else:
+            self.fine_criterion = FocalLoss(gamma=gamma_fine)
+    
+    def forward(self, inputs, targets):
+        """
+        Args:
+            inputs: Model logits (B, 4)
+            targets: Fine-grained labels 0-3 (B,)
+        """
+        # Coarse targets
+        coarse_targets = (targets >= 2).long()
+        
+        # Coarse logits
+        fine_probs = F.softmax(inputs, dim=1)
+        normal_prob = fine_probs[:, 0] + fine_probs[:, 1]
+        abnormal_prob = fine_probs[:, 2] + fine_probs[:, 3]
+        coarse_logits = torch.stack([normal_prob, abnormal_prob], dim=1)
+        coarse_logits = torch.log(coarse_logits + 1e-8)
+        
+        # Coarse focal loss
+        coarse_loss = self.coarse_criterion(coarse_logits, coarse_targets)
+        
+        # Fine focal loss
+        fine_loss = self.fine_criterion(inputs, targets)
+        
+        # Combined
+        total_loss = self.alpha * coarse_loss + (1 - self.alpha) * fine_loss
+        
+        return total_loss
+
+
 def get_loss_function(loss_name, class_weights=None, focal_gamma=2.0, label_smoothing=0.1, 
-                      lambda_worst=0.3, poly_epsilon=1.0, device='cuda'):
+                      lambda_worst=0.3, poly_epsilon=1.0, hierarchical_alpha=0.3, device='cuda'):
     """Factory for loss functions
     
     Args:
         loss_name: One of ['focal', 'weighted_ce', 'focal_weighted', 'dynamic_worst_class',
-                          'asymmetric', 'poly']
+                          'asymmetric', 'poly', 'hierarchical', 'hierarchical_focal']
         class_weights: Tensor of class weights
         focal_gamma: Gamma parameter for focal loss
         label_smoothing: Label smoothing factor
         lambda_worst: Lambda for dynamic worst class loss
         poly_epsilon: Epsilon for PolyLoss (1.0-3.0, higher = stronger)
+        hierarchical_alpha: Weight for coarse vs fine loss in hierarchical losses
         device: Device to put tensors on
     """
     if class_weights is not None:
@@ -268,6 +393,23 @@ def get_loss_function(loss_name, class_weights=None, focal_gamma=2.0, label_smoo
             num_classes=4,
             epsilon=poly_epsilon,
             weight=class_weights
+        )
+    elif loss_name == 'hierarchical':
+        # Hierarchical Loss: Normal vs Abnormal, then fine-grained
+        # Good for learning class relationships
+        return HierarchicalLoss(
+            alpha=hierarchical_alpha,
+            class_weights=class_weights,
+            gamma=focal_gamma
+        )
+    elif loss_name == 'hierarchical_focal':
+        # Hierarchical + Focal: Best of both worlds
+        # Combines class hierarchy with hard example mining
+        return HierarchicalFocalLoss(
+            alpha=hierarchical_alpha,
+            gamma_coarse=focal_gamma,
+            gamma_fine=focal_gamma,
+            class_weights=class_weights
         )
     else:
         raise ValueError(f"Unknown loss: {loss_name}")
