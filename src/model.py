@@ -7,7 +7,7 @@ class SwinClassifier(nn.Module):
     
     def __init__(
         self, 
-        model_name='swin_base_patch4_window7_224',
+        model_name='swin_base_patch4_window12_384',
         num_classes=4,
         pretrained=True,
         dropout=0.3,

@@ -1,7 +1,7 @@
 program: train.py
 method: bayes
 metric:
-  name: val/worst_
+  name: val/worst_class_recall
   goal: maximize
 early_terminate:
   type: hyperband
@@ -11,21 +11,21 @@ early_terminate:
 
 parameters:
   model_name:
-    value: 'swin_base_patch4_window7_224'
+    value: 'swin_base_patch4_window12_384'
   
   image_size:
-    value: 224
+    value: 384
   
   # OPTIMIZED: Top runs cluster at lower values (8e-5 to 1e-4)
   # Extended lower bound to explore even smaller rates
   learning_rate:
     distribution: log_uniform_values
-    min: 0.00004
-    max: 0.00012
+    min: 0.0001
+    max: 0.0002
   
   # OPTIMIZED: Top runs favor higher values (0.0003-0.0004)
   weight_decay:
-    values: [0.0003, 0.0004]
+    value: 0.0003
   
   batch_size:
     value: 32
@@ -47,7 +47,7 @@ parameters:
   # OPTIMIZED: Strong negative correlation - focus on low values
   # Top runs heavily cluster around 1.0
   focal_gamma:
-    values: [0.8, 1.0, 1.2]
+    values: [1.0, 1.2, 1.4]
   
   # OPTIMIZED: Top runs favor 0.10-0.12
   label_smoothing:
