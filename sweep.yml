@@ -42,7 +42,7 @@ parameters:
     value: 'cosine'
   
   loss_function:
-    value: 'focal_weighted'
+    values: ['focal_weighted', 'asymmetric', 'poly']
   
   # OPTIMIZED: Strong negative correlation - focus on low values
   # Top runs heavily cluster around 1.0
@@ -90,3 +90,7 @@ parameters:
   class_weight_boost:
     min: 3.5
     max: 5.5
+  
+  # Poly epsilon for PolyLoss (only used when loss_function='poly')
+  poly_epsilon:
+    values: [1.0, 2.0, 3.0]

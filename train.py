@@ -221,6 +221,7 @@ def train(config=None):
             focal_gamma=config.get('focal_gamma', 2.0),
             label_smoothing=config.get('label_smoothing', 0.1),
             lambda_worst=config.get('lambda_worst', 0.3),  # For dynamic_worst_class loss
+            poly_epsilon=config.get('poly_epsilon', 1.0),  # For poly loss
             device=device
         )
         

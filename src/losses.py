@@ -41,6 +41,120 @@ class FocalWeightedLoss(nn.Module):
         return focal_loss.mean()
 
 
+class AsymmetricLoss(nn.Module):
+    """
+    Asymmetric Loss for Multi-Class Classification.
+    Optimized for imbalanced datasets (like GastroVision).
+    Supports Soft Targets (Mixup/Cutmix).
+    
+    Decouples focusing for positive/negative samples:
+    - Aggressively silences easy negative samples (e.g., Normal Esophagus)
+    - Focuses gradients on hard positive samples (e.g., Erythema)
+    
+    Args:
+        gamma_neg: Focusing parameter for negative samples (default: 4)
+        gamma_pos: Focusing parameter for positive samples (default: 1)
+        clip: Clipping value for negative probabilities (default: 0.05)
+        eps: Numerical stability constant
+        disable_torch_grad_focal_loss: Disable grad for focal weight computation
+    """
+    def __init__(self, gamma_neg=4, gamma_pos=1, clip=0.05, eps=1e-8, 
+                 disable_torch_grad_focal_loss=True):
+        super().__init__()
+        self.gamma_neg = gamma_neg
+        self.gamma_pos = gamma_pos
+        self.clip = clip
+        self.disable_torch_grad_focal_loss = disable_torch_grad_focal_loss
+        self.eps = eps
+
+    def forward(self, x, y):
+        """
+        Args:
+            x: input logits [batch_size, num_classes]
+            y: targets (integers or soft targets from mixup)
+        """
+        # Convert hard labels to one-hot if needed
+        if y.ndim == 1:
+            num_classes = x.size(1)
+            y = F.one_hot(y, num_classes).float()
+        
+        # Calculate probabilities
+        x_sigmoid = torch.sigmoid(x)
+        xs_pos = x_sigmoid
+        xs_neg = 1 - x_sigmoid
+
+        # Asymmetric Clipping
+        if self.clip is not None and self.clip > 0:
+            xs_neg = (xs_neg + self.clip).clamp(max=1)
+
+        # Basic Cross Entropy Calculation
+        los_pos = y * torch.log(xs_pos.clamp(min=self.eps))
+        los_neg = (1 - y) * torch.log(xs_neg.clamp(min=self.eps))
+        
+        # Asymmetric Focusing
+        if self.disable_torch_grad_focal_loss:
+            torch.set_grad_enabled(False)
+        pt0 = xs_pos * y
+        pt1 = xs_neg * (1 - y)
+        pt = pt0 + pt1
+        one_sided_gamma = self.gamma_pos * y + self.gamma_neg * (1 - y)
+        one_sided_w = torch.pow(1 - pt, one_sided_gamma)
+        if self.disable_torch_grad_focal_loss:
+            torch.set_grad_enabled(True)
+            
+        loss = -one_sided_w * (los_pos + los_neg)
+        return loss.sum() / x.size(0)  # Average over batch
+
+
+class Poly1CrossEntropyLoss(nn.Module):
+    """
+    PolyLoss: A Polynomial Expansion of Cross Entropy.
+    Often performs better than Focal Loss on imbalanced medical data.
+    Supports Soft Targets from Mixup/Cutmix.
+    
+    Loss = CE + epsilon * (1 - Pt)
+    
+    Where Pt is the probability of the target class. This provides a more
+    stable alternative to Focal Loss for Transformer models.
+    
+    Args:
+        num_classes: Number of classes
+        epsilon: Polynomial coefficient (default: 1.0, try 2.0 for stronger effect)
+        weight: Class weights tensor
+        reduction: 'mean', 'sum', or 'none'
+    """
+    def __init__(self, num_classes, epsilon=1.0, weight=None, reduction='mean'):
+        super().__init__()
+        self.epsilon = epsilon
+        self.weight = weight
+        self.reduction = reduction
+        self.num_classes = num_classes
+
+    def forward(self, logits, targets):
+        # Handle mixup (soft targets)
+        if targets.ndim > 1:
+            # If targets are one-hot/mixed, use soft-label approach
+            probs = F.softmax(logits, dim=-1)
+            # Standard CE part
+            ce_loss = -torch.sum(targets * torch.log(probs + 1e-8), dim=-1)
+            # Poly1 term: epsilon * (1 - Pt)
+            # Pt is the probability of the target class
+            pt = torch.sum(targets * probs, dim=-1)
+            poly1 = self.epsilon * (1 - pt)
+            loss = ce_loss + poly1
+        else:
+            # Standard hard targets
+            ce_loss = F.cross_entropy(logits, targets, weight=self.weight, reduction='none')
+            pt = torch.exp(-ce_loss)
+            loss = ce_loss + self.epsilon * (1 - pt)
+
+        if self.reduction == 'mean':
+            return loss.mean()
+        elif self.reduction == 'sum':
+            return loss.sum()
+        return loss
+
+
 class DynamicWorstClassLoss(nn.Module):
     """Dynamic loss that emphasizes worst-performing class
     
@@ -114,14 +228,17 @@ class DynamicWorstClassLoss(nn.Module):
 
 
 def get_loss_function(loss_name, class_weights=None, focal_gamma=2.0, label_smoothing=0.1, 
-                      lambda_worst=0.3, device='cuda'):
+                      lambda_worst=0.3, poly_epsilon=1.0, device='cuda'):
     """Factory for loss functions
     
     Args:
-        loss_name: One of ['focal', 'weighted_ce', 'focal_weighted']
+        loss_name: One of ['focal', 'weighted_ce', 'focal_weighted', 'dynamic_worst_class',
+                          'asymmetric', 'poly']
         class_weights: Tensor of class weights
         focal_gamma: Gamma parameter for focal loss
         label_smoothing: Label smoothing factor
+        lambda_worst: Lambda for dynamic worst class loss
+        poly_epsilon: Epsilon for PolyLoss (1.0-3.0, higher = stronger)
         device: Device to put tensors on
     """
     if class_weights is not None:
@@ -139,6 +256,18 @@ def get_loss_function(loss_name, class_weights=None, focal_gamma=2.0, label_smoo
             gamma=focal_gamma, 
             lambda_worst=lambda_worst,
             num_classes=4
+        )
+    elif loss_name == 'asymmetric':
+        # Asymmetric Loss: Aggressive on easy negatives, focus on hard positives
+        # Recommended for datasets where one class dominates (e.g., Normal Esophagus)
+        return AsymmetricLoss(gamma_neg=4, gamma_pos=1, clip=0.05)
+    elif loss_name == 'poly':
+        # PolyLoss: Polynomial expansion of CE, often more stable than Focal
+        # Good for Transformers on imbalanced medical data
+        return Poly1CrossEntropyLoss(
+            num_classes=4,
+            epsilon=poly_epsilon,
+            weight=class_weights
         )
     else:
         raise ValueError(f"Unknown loss: {loss_name}")

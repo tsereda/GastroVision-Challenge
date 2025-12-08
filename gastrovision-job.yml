@@ -63,7 +63,7 @@ spec:
               # Initialize sweep (run this once to get sweep ID)
               # wandb sweep config/sweep.yaml
               
-              wandb agent timgsereda/GastroVision-Challenge/3b2yv37a
+              wandb agent timgsereda/GastroVision-Challenge/mtokg3jl
           
           volumeMounts:
             - name: workspace

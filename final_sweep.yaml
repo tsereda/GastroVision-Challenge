@@ -36,9 +36,9 @@ parameters:
   scheduler:
     value: 'cosine'
   
-  # ONLY dynamic worst-class loss
+  # Loss functions: Test all three SOTA approaches
   loss_function:
-    value: 'dynamic_worst_class'
+    values: ['dynamic_worst_class', 'asymmetric', 'poly']
   
   # Focal gamma - moderate range
   focal_gamma:
@@ -57,6 +57,11 @@ parameters:
   lambda_worst:
     min: 0.25
     max: 0.45
+  
+  # Poly epsilon for PolyLoss (higher = stronger focus on hard examples)
+  poly_epsilon:
+    min: 1.5
+    max: 2.5
   
   # Augmentation - proven values
   mixup_alpha:
