@@ -315,13 +315,27 @@ def train(config=None):
             if is_best:
                 best_balanced_acc = val_acc
                 patience_counter = 0  # Reset patience counter
+                checkpoint_path = f'best_model_{run.id}.pth'
                 torch.save({
                     'epoch': epoch,
                     'model_state_dict': model.state_dict(),
                     'balanced_acc': best_balanced_acc,
                     'config': dict(config)
-                }, f'best_model_{run.id}.pth')
-                print(f"  → Saved checkpoint: best_model_{run.id}.pth (Acc: {best_balanced_acc:.4f})")
+                }, checkpoint_path)
+                
+                # Upload to W&B
+                wandb.save(checkpoint_path)
+                
+                # Also save as 'best_model.pth' for easier inference
+                torch.save({
+                    'epoch': epoch,
+                    'model_state_dict': model.state_dict(),
+                    'balanced_acc': best_balanced_acc,
+                    'config': dict(config)
+                }, 'best_model.pth')
+                wandb.save('best_model.pth')
+                
+                print(f"  → Saved checkpoint: {checkpoint_path} (Acc: {best_balanced_acc:.4f})")
                 print(f"✓ New best: {best_balanced_acc:.4f}")
             else:
                 patience_counter += 1

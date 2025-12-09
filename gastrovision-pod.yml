@@ -83,6 +83,8 @@ spec:
           
           echo "--- IMPORTANT: Update this pod with your sweep ID ---"
           echo "--- Keeping pod alive for debugging ---"
+          git checkout major-sweep-92
+          git pull origin major-sweep-92
           tail -f /dev/null
       
       volumeMounts:
