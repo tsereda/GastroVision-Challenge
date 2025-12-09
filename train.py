@@ -7,6 +7,7 @@ import numpy as np
 import torch
 import wandb
 import time
+import argparse
 from torch.utils.data import DataLoader
 from torch.optim import AdamW
 from torch.optim.lr_scheduler import CosineAnnealingLR, CosineAnnealingWarmRestarts
@@ -335,5 +336,49 @@ def train(config=None):
         print(f"{'='*60}")
 
 
+def parse_args():
+    """Parse command line arguments for standalone training"""
+    parser = argparse.ArgumentParser(description='GastroVision Training')
+    
+    # Model architecture
+    parser.add_argument('--model_name', type=str, default='swin_base_patch4_window12_384')
+    parser.add_argument('--image_size', type=int, default=384)
+    parser.add_argument('--dropout_rate', type=float, default=0.3)
+    parser.add_argument('--stochastic_depth', type=float, default=0.2)
+    
+    # Training hyperparameters
+    parser.add_argument('--batch_size', type=int, default=32)
+    parser.add_argument('--epochs', type=int, default=50)
+    parser.add_argument('--learning_rate', type=float, default=1e-4)
+    parser.add_argument('--weight_decay', type=float, default=1e-4)
+    parser.add_argument('--warmup_epochs', type=int, default=10)
+    parser.add_argument('--scheduler', type=str, default='cosine', choices=['cosine', 'warmrestarts'])
+    
+    # Loss function
+    parser.add_argument('--loss_function', type=str, default='asymmetric')
+    parser.add_argument('--focal_gamma', type=float, default=2.0)
+    parser.add_argument('--label_smoothing', type=float, default=0.1)
+    parser.add_argument('--lambda_worst', type=float, default=0.3)
+    parser.add_argument('--poly_epsilon', type=float, default=1.0)
+    parser.add_argument('--class_weight_boost', type=float, default=1.0)
+    
+    # Augmentations
+    parser.add_argument('--color_jitter_brightness', type=float, default=0.2)
+    parser.add_argument('--color_jitter_contrast', type=float, default=0.2)
+    parser.add_argument('--color_jitter_saturation', type=float, default=0.2)
+    parser.add_argument('--mixup_alpha', type=float, default=0.2)
+    parser.add_argument('--mixup_prob', type=float, default=0.5)
+    parser.add_argument('--cutmix_alpha', type=float, default=1.0)
+    
+    return parser.parse_args()
+
+
 if __name__ == '__main__':
-    train()
+    # Parse command line arguments
+    args = parse_args()
+    
+    # Convert argparse Namespace to dict for wandb
+    config_dict = vars(args)
+    
+    # Run training with parsed config
+    train(config=config_dict)
