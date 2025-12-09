@@ -2,11 +2,8 @@ import time
 import numpy as np
 import torch
 import wandb
+import pandas as pd
 from pathlib import Path
-import numpy as np
-import torch
-import wandb
-import time
 import argparse
 from torch.utils.data import DataLoader
 from torch.optim import AdamW
@@ -149,6 +146,98 @@ def validate(model, loader, criterion, device):
     }
     
     return metrics, conf_matrix
+
+
+def generate_validation_csv(model, val_paths, val_labels, config, run_id, device='cuda'):
+    """Generate CSV with validation predictions for analysis"""
+    from pathlib import Path
+    import pandas as pd
+    
+    print(f"\n{'='*60}")
+    print("📊 Generating validation predictions CSV...")
+    print(f"{'='*60}")
+    
+    # Class names for output
+    class_names = [
+        'Normal_mucosa_large_bowel',  # 0
+        'Normal_esophagus',            # 1
+        'colon polyp',                 # 2
+        'Erythema'                     # 3
+    ]
+    
+    # Create dataset and loader
+    img_size = config.get('img_size', 384)
+    val_transforms = get_val_transforms(img_size=img_size)
+    val_dataset = GastroVisionDataset(val_paths, val_labels, transform=val_transforms)
+    val_loader = DataLoader(val_dataset, batch_size=32, shuffle=False, num_workers=4)
+    
+    # Get predictions
+    model.eval()
+    all_preds = []
+    all_probs = []
+    all_targets = []
+    all_paths = []
+    
+    with torch.no_grad():
+        for i, (images, targets) in enumerate(val_loader):
+            images = images.to(device)
+            outputs = model(images)
+            probs = torch.softmax(outputs, dim=1)
+            preds = torch.argmax(outputs, dim=1)
+            
+            all_preds.extend(preds.cpu().numpy())
+            all_probs.extend(probs.cpu().numpy())
+            all_targets.extend(targets.numpy())
+            
+            # Get corresponding paths
+            batch_start = i * 32
+            batch_end = min(batch_start + 32, len(val_paths))
+            all_paths.extend(val_paths[batch_start:batch_end])
+    
+    # Create DataFrame
+    data = {
+        'image_path': [Path(p).name for p in all_paths],
+        'true_label': [class_names[t] for t in all_targets],
+        'predicted_label': [class_names[p] for p in all_preds],
+        'correct': [t == p for t, p in zip(all_targets, all_preds)],
+    }
+    
+    # Add probability columns
+    for i, class_name in enumerate(class_names):
+        data[f'prob_{class_name}'] = [probs[i] for probs in all_probs]
+    
+    df = pd.DataFrame(data)
+    
+    # Save to CSV
+    csv_filename = f'validation_predictions_{run_id}.csv'
+    df.to_csv(csv_filename, index=False)
+    
+    # Also save to /data if PVC is mounted
+    try:
+        pvc_path = f'/data/validation_predictions_{run_id}.csv'
+        df.to_csv(pvc_path, index=False)
+        print(f"✅ Saved to PVC: {pvc_path}")
+    except:
+        print(f"⚠️  Could not save to /data (PVC not mounted)")
+    
+    # Calculate and print summary
+    accuracy = (df['correct'].sum() / len(df)) * 100
+    
+    print(f"\n📈 Validation Summary:")
+    print(f"   Total samples: {len(df)}")
+    print(f"   Correct: {df['correct'].sum()}")
+    print(f"   Accuracy: {accuracy:.2f}%")
+    
+    print(f"\n📁 Saved validation predictions:")
+    print(f"   Local: {csv_filename}")
+    
+    # Upload to W&B
+    wandb.save(csv_filename)
+    
+    print(f"   W&B: Uploaded to run artifacts")
+    print(f"{'='*60}\n")
+    
+    return csv_filename
 
 
 def train(config=None):
@@ -348,6 +437,20 @@ def train(config=None):
         print(f"Training completed!")
         print(f"Best validation balanced accuracy: {best_balanced_acc:.4f}")
         print(f"{'='*60}")
+        
+        # Generate validation predictions CSV
+        print(f"\n🔄 Loading best model for validation predictions...")
+        checkpoint = torch.load('best_model.pth', map_location=device)
+        model.load_state_dict(checkpoint['model_state_dict'])
+        
+        generate_validation_csv(
+            model=model,
+            val_paths=val_paths,
+            val_labels=val_labels,
+            config=config,
+            run_id=run.id,
+            device=device
+        )
 
 
 def parse_args():
