@@ -5,7 +5,8 @@ import wandb
 import pandas as pd
 from pathlib import Path
 import argparse
-from torch.utils.data import DataLoader
+from PIL import Image
+from torch.utils.data import DataLoader, Dataset
 from torch.optim import AdamW
 from torch.optim.lr_scheduler import CosineAnnealingLR, CosineAnnealingWarmRestarts
 from sklearn.metrics import balanced_accuracy_score, f1_score, recall_score, confusion_matrix
@@ -148,16 +149,15 @@ def validate(model, loader, criterion, device):
     return metrics, conf_matrix
 
 
-def generate_validation_csv(model, val_paths, val_labels, config, run_id, device='cuda'):
-    """Generate CSV with validation predictions for analysis"""
-    from pathlib import Path
-    import pandas as pd
+def generate_submission_csv(model, config, run_id, device='cuda'):
+    """Generate submission CSV for test dataset"""
+    from PIL import Image
     
     print(f"\n{'='*60}")
-    print("📊 Generating validation predictions CSV...")
+    print("🔮 Generating submission CSV for test dataset...")
     print(f"{'='*60}")
     
-    # Class names for output
+    # Class names for output (must match submission format)
     class_names = [
         'Normal_mucosa_large_bowel',  # 0
         'Normal_esophagus',            # 1
@@ -165,76 +165,101 @@ def generate_validation_csv(model, val_paths, val_labels, config, run_id, device
         'Erythema'                     # 3
     ]
     
-    # Create dataset and loader
+    # Find test images
+    test_dir = Path('Gastrovision Challenge dataset/Test dataset')
+    if not test_dir.exists():
+        print(f"⚠️  Test dataset not found at {test_dir}")
+        return None
+    
+    test_images = sorted(list(test_dir.glob('*.jpg')))
+    print(f"📁 Found {len(test_images)} test images")
+    
+    # Create dataset and loader (no labels for test set)
     img_size = config.get('img_size', 384)
     val_transforms = get_val_transforms(img_size=img_size)
-    val_dataset = GastroVisionDataset(val_paths, val_labels, transform=val_transforms)
-    val_loader = DataLoader(val_dataset, batch_size=32, shuffle=False, num_workers=4)
+    
+    # Simple test dataset
+    class TestDataset(Dataset):
+        def __init__(self, image_paths, transform=None):
+            self.image_paths = image_paths
+            self.transform = transform
+        
+        def __len__(self):
+            return len(self.image_paths)
+        
+        def __getitem__(self, idx):
+            img_path = self.image_paths[idx]
+            image = Image.open(img_path).convert('RGB')
+            image = np.array(image)
+            
+            if self.transform:
+                augmented = self.transform(image=image)
+                image = augmented['image']
+            
+            return image, Path(img_path).name
+    
+    test_dataset = TestDataset(test_images, transform=val_transforms)
+    test_loader = DataLoader(test_dataset, batch_size=32, shuffle=False, num_workers=4)
     
     # Get predictions
     model.eval()
-    all_preds = []
-    all_probs = []
-    all_targets = []
-    all_paths = []
+    predictions = []
     
+    print(f"🔄 Running inference...")
     with torch.no_grad():
-        for i, (images, targets) in enumerate(val_loader):
+        for images, image_names in test_loader:
             images = images.to(device)
             outputs = model(images)
-            probs = torch.softmax(outputs, dim=1)
-            preds = torch.argmax(outputs, dim=1)
+            preds = torch.argmax(outputs, dim=1).cpu().numpy()
             
-            all_preds.extend(preds.cpu().numpy())
-            all_probs.extend(probs.cpu().numpy())
-            all_targets.extend(targets.numpy())
-            
-            # Get corresponding paths
-            batch_start = i * 32
-            batch_end = min(batch_start + 32, len(val_paths))
-            all_paths.extend(val_paths[batch_start:batch_end])
+            for img_name, pred in zip(image_names, preds):
+                predictions.append((img_name, class_names[pred]))
     
-    # Create DataFrame
-    data = {
-        'image_path': [Path(p).name for p in all_paths],
-        'true_label': [class_names[t] for t in all_targets],
-        'predicted_label': [class_names[p] for p in all_preds],
-        'correct': [t == p for t, p in zip(all_targets, all_preds)],
-    }
+    # Save submission CSV
+    csv_filename = f'submission_timothysereda_{run_id}.csv'
     
-    # Add probability columns
-    for i, class_name in enumerate(class_names):
-        data[f'prob_{class_name}'] = [probs[i] for probs in all_probs]
-    
-    df = pd.DataFrame(data)
-    
-    # Save to CSV
-    csv_filename = f'validation_predictions_{run_id}.csv'
-    df.to_csv(csv_filename, index=False)
+    with open(csv_filename, 'w') as f:
+        f.write('image_id,prediction\n')
+        for img_id, pred_class in sorted(predictions):
+            f.write(f'{img_id},{pred_class}\n')
     
     # Also save to /data if PVC is mounted
+    pvc_csv = 'submission_timothysereda.csv'
     try:
-        pvc_path = f'/data/validation_predictions_{run_id}.csv'
-        df.to_csv(pvc_path, index=False)
+        pvc_path = f'/data/{pvc_csv}'
+        with open(pvc_path, 'w') as f:
+            f.write('image_id,prediction\n')
+            for img_id, pred_class in sorted(predictions):
+                f.write(f'{img_id},{pred_class}\n')
         print(f"✅ Saved to PVC: {pvc_path}")
-    except:
-        print(f"⚠️  Could not save to /data (PVC not mounted)")
+    except Exception as e:
+        print(f"⚠️  Could not save to /data: {e}")
     
-    # Calculate and print summary
-    accuracy = (df['correct'].sum() / len(df)) * 100
+    # Print summary
+    class_counts = {}
+    for _, pred_class in predictions:
+        class_counts[pred_class] = class_counts.get(pred_class, 0) + 1
     
-    print(f"\n📈 Validation Summary:")
-    print(f"   Total samples: {len(df)}")
-    print(f"   Correct: {df['correct'].sum()}")
-    print(f"   Accuracy: {accuracy:.2f}%")
+    print(f"\n📊 Submission Summary:")
+    print(f"   Total predictions: {len(predictions)}")
+    for class_name, count in sorted(class_counts.items()):
+        print(f"   {class_name}: {count} ({100*count/len(predictions):.1f}%)")
     
-    print(f"\n📁 Saved validation predictions:")
+    print(f"\n📁 Saved submission files:")
     print(f"   Local: {csv_filename}")
+    print(f"   PVC: /data/{pvc_csv}")
     
     # Upload to W&B
     wandb.save(csv_filename)
     
     print(f"   W&B: Uploaded to run artifacts")
+    
+    # Show preview
+    print(f"\n📄 Preview (first 10 rows):")
+    print("image_id,prediction")
+    for img_id, pred_class in sorted(predictions)[:10]:
+        print(f"{img_id},{pred_class}")
+    
     print(f"{'='*60}\n")
     
     return csv_filename
@@ -439,14 +464,12 @@ def train(config=None):
         print(f"{'='*60}")
         
         # Generate validation predictions CSV
-        print(f"\n🔄 Loading best model for validation predictions...")
+        print(f"\n🔄 Loading best model for test set inference...")
         checkpoint = torch.load('best_model.pth', map_location=device)
         model.load_state_dict(checkpoint['model_state_dict'])
         
-        generate_validation_csv(
+        generate_submission_csv(
             model=model,
-            val_paths=val_paths,
-            val_labels=val_labels,
             config=config,
             run_id=run.id,
             device=device
